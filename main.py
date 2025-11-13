@@ -48,6 +48,7 @@ class TicketRequest(BaseModel):
     description: str
     title: Optional[str] = None
     user_id: Optional[str] = None
+    ticket_id: Optional[str] = None
     attachments: Optional[List[str]] = None
 
 class LLMProviderRequest(BaseModel):
@@ -58,7 +59,8 @@ class LLMProviderRequest(BaseModel):
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Serve the frontend UI"""
-    return HTMLResponse(open("static/index.html").read())
+    with open("static/index.html") as f:
+        return HTMLResponse(f.read())
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
@@ -75,24 +77,29 @@ async def categorize_ticket(request: TicketRequest):
 @app.post("/resolve_ticket")
 async def resolve_ticket(request: TicketRequest):
     """Attempt to auto-resolve a ticket if it matches known patterns"""
+    if not request.ticket_id:
+        raise HTTPException(status_code=400, detail="ticket_id is required for auto-resolution")
+
     resolution_result = llm_manager.analyze_for_auto_resolution(
-        request.title, 
+        request.title,
         request.description
     )
-    
+
     if resolution_result["can_auto_resolve"]:
-        # Send resolution to Incident IQ
+        # Send resolution to Incident IQ using the provided ticket_id
         incident_iq.resolve_ticket(
-            ticket_id=resolution_result["ticket_id"],
+            ticket_id=request.ticket_id,
             resolution=resolution_result["resolution"]
         )
         return JSONResponse(content={
             "auto_resolved": True,
+            "ticket_id": request.ticket_id,
             "resolution": resolution_result["resolution"]
         })
     else:
         return JSONResponse(content={
             "auto_resolved": False,
+            "ticket_id": request.ticket_id,
             "reason": resolution_result["reason"]
         })
 

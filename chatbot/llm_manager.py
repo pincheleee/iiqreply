@@ -1,6 +1,5 @@
 import os
 from typing import Dict, List, Optional, Any
-import ollama
 from langchain.llms import Ollama
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
@@ -134,20 +133,20 @@ class LLMManager:
     def analyze_for_auto_resolution(self, title: Optional[str], description: str) -> Dict[str, Any]:
         """
         Analyze a ticket to determine if it can be automatically resolved.
-        
+
         Args:
             title: The ticket title
             description: The ticket description
-            
+
         Returns:
             Dict containing analysis results including whether the ticket can be auto-resolved
         """
         title = title or "No title provided"
-        
+
         try:
             # Get the raw response from the LLM
             response = self.analysis_chain.run(title=title, description=description)
-            
+
             # Parse the response - in a real implementation, we'd use proper JSON parsing
             # For simplicity, we're mocking the response parsing here
             import json
@@ -160,17 +159,13 @@ class LLMManager:
                     "resolution": "",
                     "reason": "Failed to parse LLM response"
                 }
-                
-            # Add ticket_id field for consistency with the API
-            result["ticket_id"] = "mock-ticket-id"  # In real implementation, this would come from the request
-            
+
             return result
-            
+
         except Exception as e:
             # Fallback for any errors
             return {
                 "can_auto_resolve": False,
-                "ticket_id": "mock-ticket-id",
                 "resolution": "",
                 "reason": f"Error analyzing ticket: {str(e)}"
             } 
