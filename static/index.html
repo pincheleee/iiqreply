@@ -68,6 +68,10 @@
         button:hover {
             background-color: #2980b9;
         }
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
         .message {
             margin-bottom: 10px;
             padding: 10px;
@@ -125,6 +129,25 @@
             border-radius: 5px;
             background-color: #f1f1f1;
         }
+        /* Loading spinner */
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #ccc;
+            border-top-color: #3498db;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .loading-text {
+            color: #777;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -135,12 +158,12 @@
     <div class="container">
         <div class="config-panel">
             <h2>LLM Provider Configuration</h2>
-            
+
             <div class="provider-toggle">
                 <div class="toggle-btn active" id="ollama-toggle" onclick="toggleProvider('ollama')">Ollama (Local)</div>
                 <div class="toggle-btn" id="openai-toggle" onclick="toggleProvider('openai')">OpenAI (API)</div>
             </div>
-            
+
             <div id="openai-config" style="display: none;">
                 <div>
                     <label for="api-key">OpenAI API Key:</label>
@@ -155,7 +178,7 @@
                 </div>
                 <button onclick="saveApiKey()">Save & Connect</button>
             </div>
-            
+
             <div id="status-indicator">
                 Current Provider: <span id="current-provider">Ollama (Local)</span><br>
                 Model: <span id="current-model">llama3</span>
@@ -174,7 +197,7 @@
                 </div>
                 <div class="chat-input">
                     <input type="text" id="user-input" placeholder="Type your IT question here..." onkeydown="if(event.key==='Enter') sendMessage()">
-                    <button onclick="sendMessage()">Send</button>
+                    <button id="send-btn" onclick="sendMessage()">Send</button>
                 </div>
             </div>
         </div>
@@ -183,6 +206,10 @@
             <div class="config-panel">
                 <h2>Create Support Ticket</h2>
                 <div>
+                    <label for="ticket-id">Ticket ID (optional, for IIQ integration):</label>
+                    <input type="text" id="ticket-id" placeholder="e.g. IIQ-12345">
+                </div>
+                <div>
                     <label for="ticket-title">Title:</label>
                     <input type="text" id="ticket-title" placeholder="Brief description of the issue">
                 </div>
@@ -190,7 +217,7 @@
                     <label for="ticket-description">Description:</label>
                     <textarea id="ticket-description" rows="5" placeholder="Detailed description of your issue..."></textarea>
                 </div>
-                <button onclick="createTicket()">Submit Ticket</button>
+                <button id="submit-ticket-btn" onclick="createTicket()">Submit Ticket</button>
                 <div id="ticket-result" style="margin-top: 20px;"></div>
             </div>
         </div>
@@ -229,14 +256,19 @@
 
         // Save API key and switch to OpenAI
         function saveApiKey() {
-            const apiKey = document.getElementById('api-key').value;
+            const apiKey = document.getElementById('api-key').value.trim();
             const model = document.getElementById('model-select').value;
-            
+
             if (!apiKey) {
                 alert('Please enter your OpenAI API key');
                 return;
             }
-            
+
+            if (apiKey.length < 10) {
+                alert('API key appears too short. Please enter a valid OpenAI API key.');
+                return;
+            }
+
             switchProvider('openai', apiKey, model);
         }
 
@@ -254,23 +286,23 @@
                         model_name: modelName
                     })
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (response.ok) {
-                    document.getElementById('current-provider').textContent = 
+                    document.getElementById('current-provider').textContent =
                         provider === 'openai' ? 'OpenAI (API)' : 'Ollama (Local)';
                     document.getElementById('current-model').textContent = data.model;
-                    
+
                     // Add success message
                     const messages = document.getElementById('chat-messages');
                     const messageDiv = document.createElement('div');
                     messageDiv.className = 'message bot-message';
-                    messageDiv.textContent = `Switched to ${provider} provider using model ${data.model}`;
+                    messageDiv.textContent = 'Switched to ' + provider + ' provider using model ' + data.model;
                     messages.appendChild(messageDiv);
                     messages.scrollTop = messages.scrollHeight;
                 } else {
-                    alert(`Error: ${data.detail}`);
+                    alert('Error: ' + data.detail);
                 }
             } catch (error) {
                 console.error('Error:', error);
@@ -281,27 +313,32 @@
         // Send message
         async function sendMessage() {
             const userInput = document.getElementById('user-input');
+            const sendBtn = document.getElementById('send-btn');
             const message = userInput.value.trim();
-            
+
             if (!message) return;
-            
+
+            // Disable input while processing
+            userInput.disabled = true;
+            sendBtn.disabled = true;
+
             // Add user message to chat
             const messages = document.getElementById('chat-messages');
             const userMessageDiv = document.createElement('div');
             userMessageDiv.className = 'message user-message';
             userMessageDiv.textContent = message;
             messages.appendChild(userMessageDiv);
-            
+
             // Clear input
             userInput.value = '';
-            
-            // Show loading message
+
+            // Show loading message with spinner
             const loadingDiv = document.createElement('div');
             loadingDiv.className = 'message bot-message';
-            loadingDiv.textContent = 'Thinking...';
+            loadingDiv.innerHTML = '<span class="spinner"></span><span class="loading-text">Thinking...</span>';
             messages.appendChild(loadingDiv);
             messages.scrollTop = messages.scrollHeight;
-            
+
             try {
                 const response = await fetch('/chat', {
                     method: 'POST',
@@ -312,78 +349,106 @@
                         message: message
                     })
                 });
-                
+
                 const data = await response.json();
-                
-                // Replace loading message with actual response
-                loadingDiv.textContent = data.response;
+
+                if (response.ok) {
+                    // Replace loading message with actual response
+                    loadingDiv.innerHTML = '';
+                    loadingDiv.textContent = data.response;
+                } else {
+                    loadingDiv.innerHTML = '';
+                    loadingDiv.textContent = 'Error: ' + (data.detail || 'Unknown error');
+                }
                 messages.scrollTop = messages.scrollHeight;
             } catch (error) {
                 console.error('Error:', error);
+                loadingDiv.innerHTML = '';
                 loadingDiv.textContent = 'Sorry, there was an error processing your request.';
+            } finally {
+                userInput.disabled = false;
+                sendBtn.disabled = false;
+                userInput.focus();
             }
         }
 
         // Create ticket
         async function createTicket() {
+            const ticketId = document.getElementById('ticket-id').value.trim();
             const title = document.getElementById('ticket-title').value.trim();
             const description = document.getElementById('ticket-description').value.trim();
-            
+            const submitBtn = document.getElementById('submit-ticket-btn');
+
             if (!description) {
                 alert('Please provide a description of the issue');
                 return;
             }
-            
+
             const resultDiv = document.getElementById('ticket-result');
-            resultDiv.innerHTML = '<p>Processing ticket...</p>';
-            
+            resultDiv.innerHTML = '<p><span class="spinner"></span><span class="loading-text">Processing ticket...</span></p>';
+            submitBtn.disabled = true;
+
             try {
+                // Build request body
+                const requestBody = {
+                    title: title,
+                    description: description
+                };
+                if (ticketId) {
+                    requestBody.ticket_id = ticketId;
+                }
+
                 // First categorize the ticket
                 const categorizeResponse = await fetch('/categorize_ticket', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        title: title,
-                        description: description
-                    })
+                    body: JSON.stringify(requestBody)
                 });
-                
+
                 const categoryData = await categorizeResponse.json();
-                
+
                 // Then try to auto-resolve
                 const resolveResponse = await fetch('/resolve_ticket', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        title: title,
-                        description: description
-                    })
+                    body: JSON.stringify(requestBody)
                 });
-                
+
                 const resolveData = await resolveResponse.json();
-                
+
+                // Extract category info -- handle both nested and flat shapes
+                const catInfo = categoryData.category || {};
+                const categoryName = catInfo.category || catInfo || 'Unknown';
+                const confidence = catInfo.confidence != null ? (catInfo.confidence * 100).toFixed(0) + '%' : 'N/A';
+                const method = catInfo.method || '';
+
                 // Display results
-                let resultHTML = `
-                    <h3>Ticket Analysis Results</h3>
-                    <p><strong>Category:</strong> ${categoryData.category.category}</p>
-                    <p><strong>Auto-resolvable:</strong> ${resolveData.auto_resolved ? 'Yes' : 'No'}</p>
-                `;
-                
+                let resultHTML = '<h3>Ticket Analysis Results</h3>';
+                resultHTML += '<p><strong>Category:</strong> ' + categoryName + '</p>';
+                resultHTML += '<p><strong>Confidence:</strong> ' + confidence + ' (' + method + ')</p>';
+                resultHTML += '<p><strong>Auto-resolvable:</strong> ' + (resolveData.auto_resolved ? 'Yes' : 'No') + '</p>';
+
                 if (resolveData.auto_resolved) {
-                    resultHTML += `<p><strong>Resolution:</strong> ${resolveData.resolution}</p>`;
+                    resultHTML += '<p><strong>Resolution:</strong> ' + resolveData.resolution + '</p>';
                 } else {
-                    resultHTML += `<p><strong>Reason:</strong> ${resolveData.reason}</p>`;
+                    resultHTML += '<p><strong>Reason:</strong> ' + resolveData.reason + '</p>';
                 }
-                
+
+                if (resolveData.iiq_result) {
+                    resultHTML += '<p><strong>IIQ Status:</strong> Ticket updated in Incident IQ</p>';
+                }
+
                 resultDiv.innerHTML = resultHTML;
-                
+
             } catch (error) {
                 console.error('Error:', error);
                 resultDiv.innerHTML = '<p>Sorry, there was an error processing your ticket.</p>';
+            } finally {
+                submitBtn.disabled = false;
             }
         }
 
@@ -392,11 +457,11 @@
             try {
                 const response = await fetch('/status');
                 const data = await response.json();
-                
-                document.getElementById('current-provider').textContent = 
+
+                document.getElementById('current-provider').textContent =
                     data.llm_provider === 'openai' ? 'OpenAI (API)' : 'Ollama (Local)';
                 document.getElementById('current-model').textContent = data.llm_model;
-                
+
                 // Update UI to match current provider
                 if (data.llm_provider === 'openai') {
                     document.getElementById('openai-toggle').classList.add('active');
@@ -414,4 +479,4 @@
         };
     </script>
 </body>
-</html> 
+</html>
