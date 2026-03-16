@@ -1,6 +1,8 @@
-# IIQ Reply -- Local LLM Chatbot & Auto-Ticket Resolver
+# IT Support Bot -- Local LLM Chatbot & Auto-Ticket Resolver
 
-A local AI chatbot using Ollama and LLaMA models to answer IT questions and auto-categorize/resolve tickets. Supports OpenAI as an alternative provider. Integrates with Incident IQ to update, resolve, and comment on tickets via the IIQ API.
+A local AI chatbot using Ollama and LLaMA models to answer IT questions and auto-categorize/resolve tickets. Supports OpenAI as an alternative provider. Designed to integrate with any ticketing system (Incident IQ, Spiceworks, Jira Service Management, Zendesk, etc.) by swapping the API connector.
+
+> **Connector note:** The included Incident IQ connector (`chatbot/incident_iq.py`) is the reference implementation. To integrate with a different ticketing platform, implement the same interface against your platform's API. The rest of the codebase (LLM, categorizer, UI) is ticketing-system-agnostic and works unchanged.
 
 ## Features
 
@@ -8,7 +10,7 @@ A local AI chatbot using Ollama and LLaMA models to answer IT questions and auto
 - **Dual LLM providers** -- Ollama (local, privacy-friendly) or OpenAI (cloud, higher quality); switchable at runtime
 - **Automatic ticket categorization** -- pattern matching for common issues (with real confidence scores) plus LLM fallback for everything else
 - **Auto-resolution analysis** -- LLM determines whether a ticket can be self-resolved and provides step-by-step instructions
-- **Incident IQ integration** -- live API connector that creates, updates, resolves, and comments on IIQ tickets (not a mock)
+- **Ticketing system integration** -- pluggable connector architecture; ships with an Incident IQ connector and can be adapted to Spiceworks, Jira Service Management, Zendesk, or any REST API
 - **Robust JSON parsing** -- retries and multiple extraction strategies for LLM responses (direct parse, code-fence extraction, brace matching)
 - **Rate limiting** -- per-IP sliding-window rate limiter (default 30 req/min, configurable)
 - **Input validation** -- max message/description length (default 5000 chars), empty-input rejection via Pydantic validators
@@ -29,7 +31,7 @@ iiqreply/
     __init__.py
     llm_manager.py         # LLM provider management, chat, auto-resolution analysis
     ticket_categorizer.py  # Pattern matching + LLM ticket categorization
-    incident_iq.py         # Incident IQ API connector (GET/POST/PUT)
+    incident_iq.py         # Incident IQ API connector (reference implementation)
 ```
 
 ## Requirements
@@ -37,7 +39,7 @@ iiqreply/
 - Python 3.11+ (3.8+ may work but 3.11 is tested)
 - [Ollama](https://ollama.ai/) installed locally with a model pulled (for local LLM mode)
 - OpenAI API key (optional, for cloud LLM mode)
-- Incident IQ account with API access (optional, for ticket management)
+- Ticketing system API access (optional; Incident IQ connector included, others can be added)
 
 ## Installation
 
@@ -105,8 +107,8 @@ If you need Ollama access from inside the container, set `OLLAMA_HOST` to the ho
 | `OLLAMA_MODEL` | `llama3` | Ollama model name |
 | `OPENAI_API_KEY` | (none) | OpenAI API key (required if provider is `openai`) |
 | `OPENAI_MODEL` | `gpt-4` | OpenAI model name |
-| `INCIDENT_IQ_API_KEY` | (none) | Incident IQ API key (omit to disable IIQ integration) |
-| `INCIDENT_IQ_BASE_URL` | `https://api.incidentiq.com/v1` | Incident IQ API base URL |
+| `INCIDENT_IQ_API_KEY` | (none) | Incident IQ API key (omit to disable IIQ connector) |
+| `INCIDENT_IQ_BASE_URL` | `https://api.incidentiq.com/v1` | Incident IQ API base URL (reference connector) |
 | `PORT` | `8000` | Server port |
 | `LOG_LEVEL` | `INFO` | Python logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `RATE_LIMIT_RPM` | `30` | Max requests per minute per IP |
@@ -141,7 +143,7 @@ curl -X POST http://localhost:8000/categorize_ticket \
 Request body:
 - `description` (string, required) -- ticket description
 - `title` (string, optional) -- ticket title
-- `ticket_id` (string, optional) -- IIQ ticket ID; if provided and IIQ is configured, the ticket is updated in Incident IQ
+- `ticket_id` (string, optional) -- ticketing system ticket ID; if provided and a connector is configured, the ticket is updated in the external system
 - `user_id` (string, optional)
 
 Response includes `category`, `confidence` (0.0--0.99), and `method` (`pattern_matching` or `llm_analysis`).
@@ -158,7 +160,7 @@ curl -X POST http://localhost:8000/resolve_ticket \
 ```
 Request body: same as `/categorize_ticket`.
 
-Response includes `auto_resolved` (boolean), `resolution` or `reason`, and optionally `iiq_result` if the ticket was resolved in Incident IQ.
+Response includes `auto_resolved` (boolean), `resolution` or `reason`, and optionally `iiq_result` if the ticket was resolved in the connected ticketing system.
 
 ### `POST /switch_provider` -- Switch LLM provider at runtime
 ```bash
@@ -175,7 +177,7 @@ curl -X POST http://localhost:8000/switch_provider \
 ```bash
 curl http://localhost:8000/status
 ```
-Returns current provider, model, and whether Incident IQ is connected.
+Returns current provider, model, and whether a ticketing connector is active.
 
 ## Ticket Categories
 
