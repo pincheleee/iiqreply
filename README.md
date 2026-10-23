@@ -2,6 +2,14 @@
 
 A local AI chatbot using Ollama and LLaMA models to answer IT questions and auto-categorize/resolve tickets. Supports OpenAI as an alternative provider. Designed to integrate with any ticketing system (Incident IQ, Spiceworks, Jira Service Management, Zendesk, etc.) by swapping the API connector.
 
+## Project Status
+
+- Status: stable
+- Last major update: 2026-03-16
+- Current focus: maintaining the local helpdesk chatbot, ticket categorization, and pluggable connector model
+- Run: `python main.py`
+- Next step: keep the ticketing abstraction clean and the local/cloud LLM paths reliable
+
 > **Connector note:** The included Incident IQ connector (`chatbot/incident_iq.py`) is the reference implementation. To integrate with a different ticketing platform, implement the same interface against your platform's API. The rest of the codebase (LLM, categorizer, UI) is ticketing-system-agnostic and works unchanged.
 
 ## Features
